@@ -1,0 +1,33 @@
+name: Supabase keep-alive
+
+on:
+  schedule:
+    - cron: '0 9 */3 * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Read one note through Supabase REST
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          set -euo pipefail
+          : "${SUPABASE_URL:?Add the SUPABASE_URL repository secret}"
+          : "${SUPABASE_PUBLISHABLE_KEY:?Add the SUPABASE_PUBLISHABLE_KEY repository secret}"
+          curl --fail --show-error --silent \
+            --connect-timeout 10 \
+            --max-time 30 \
+            --retry 3 \
+            --retry-delay 5 \
+            --header "apikey: $SUPABASE_PUBLISHABLE_KEY" \
+            --header "Accept: application/json" \
+            --get \
+            --data-urlencode "select=id" \
+            --data-urlencode "limit=1" \
+            "${SUPABASE_URL%/}/rest/v1/notes"

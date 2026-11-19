@@ -1,31 +1,18 @@
-# backend
+# Cloudnote backend
 
-A project created with FastAPI CLI.
+FastAPI validates the signed-in user's Supabase session at `GET /auth/me`.
+It returns the authenticated account's ID and email; it does not list all
+Supabase Auth users.
 
-## Quick Start
+The backend loads `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` from
+`backend/.env.local`. No service-role key is needed.
 
-### Start the development server
+## Run locally
 
 ```bash
 uv run fastapi dev
 ```
 
-Visit http://localhost:8000
-
-### Deploy to FastAPI Cloud
-
-Sign up and log in at https://fastapicloud.com, then deploy with:
-
-```bash
-uv run fastapi deploy
-```
-
-## Project Structure
-
-- `main.py` - Your FastAPI application
-- `pyproject.toml` - Project dependencies
-
-## Learn More
-
-- [FastAPI Documentation](https://fastapi.tiangolo.com)
-- [FastAPI Cloud](https://fastapicloud.com)
+Restart the backend after editing `.env.local`. Run the frontend with
+`npm run dev`, sign in, and select **Test FastAPI account lookup**. The
+frontend sends the session token through `/api` to the backend.

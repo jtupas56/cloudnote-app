@@ -5,6 +5,31 @@ import './App.css'
 import { supabase } from './lib/supabase'
 
 type AuthMode = 'sign-in' | 'sign-up'
+type BackendAccount = { id: string; email: string | null }
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback
+}
+
+function isBackendAccount(value: unknown): value is BackendAccount {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    typeof value.id === 'string' &&
+    'email' in value &&
+    (typeof value.email === 'string' || value.email === null)
+  )
+}
+
+function responseDetail(value: unknown) {
+  return typeof value === 'object' &&
+    value !== null &&
+    'detail' in value &&
+    typeof value.detail === 'string'
+    ? value.detail
+    : null
+}
 
 function App() {
   const [user, setUser] = useState<User | null>(null)
@@ -15,6 +40,9 @@ function App() {
   const [notice, setNotice] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [initializing, setInitializing] = useState(Boolean(supabase))
+  const [backendAccount, setBackendAccount] = useState<BackendAccount | null>(null)
+  const [backendError, setBackendError] = useState<string | null>(null)
+  const [checkingBackend, setCheckingBackend] = useState(false)
 
   useEffect(() => {
     if (!supabase) {
@@ -36,13 +64,7 @@ function App() {
         if (sessionError) throw sessionError
         setUser(data.session?.user ?? null)
       } catch (caughtError) {
-        if (active) {
-          setError(
-            caughtError instanceof Error
-              ? caughtError.message
-              : 'Could not load your session.',
-          )
-        }
+        if (active) setError(errorMessage(caughtError, 'Could not load your session.'))
       } finally {
         if (active) setInitializing(false)
       }
@@ -64,29 +86,24 @@ function App() {
     setLoading(true)
 
     try {
-      if (mode === 'sign-up') {
-        const { data, error: signUpError } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { emailRedirectTo: window.location.origin },
-        })
-        if (signUpError) throw signUpError
-        if (!data.session) {
-          setNotice('Check your email for a confirmation link to finish signing up.')
-        }
-      } else {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        })
-        if (signInError) throw signInError
+      const request =
+        mode === 'sign-up'
+          ? supabase.auth.signUp({
+              email,
+              password,
+              options: { emailRedirectTo: window.location.origin },
+            })
+          : supabase.auth.signInWithPassword({
+              email,
+              password,
+            })
+      const { data, error } = await request
+      if (error) throw error
+      if (mode === 'sign-up' && !data.session) {
+        setNotice('Check your email for a confirmation link to finish signing up.')
       }
     } catch (caughtError) {
-      setError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : 'The authentication request could not be completed.',
-      )
+      setError(errorMessage(caughtError, 'The authentication request could not be completed.'))
     } finally {
       setLoading(false)
     }
@@ -100,14 +117,39 @@ function App() {
     try {
       const { error: signOutError } = await supabase.auth.signOut()
       if (signOutError) throw signOutError
+      setBackendAccount(null)
+      setBackendError(null)
     } catch (caughtError) {
-      setError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : 'Could not sign out.',
-      )
+      setError(errorMessage(caughtError, 'Could not sign out.'))
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function verifyBackendAccount() {
+    if (!supabase) return
+
+    setCheckingBackend(true)
+    setBackendAccount(null)
+    setBackendError(null)
+    try {
+      const { data, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError) throw sessionError
+      const accessToken = data.session?.access_token
+      if (!accessToken) throw new Error('Sign in before checking the backend.')
+
+      const response = await fetch('/api/auth/me', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      const result: unknown = await response.json()
+      if (!response.ok)
+        throw new Error(responseDetail(result) ?? 'The backend could not verify the account.')
+      if (!isBackendAccount(result)) throw new Error('The backend returned an invalid account.')
+      setBackendAccount(result)
+    } catch (caughtError) {
+      setBackendError(errorMessage(caughtError, 'The backend account check failed.'))
+    } finally {
+      setCheckingBackend(false)
     }
   }
 
@@ -120,7 +162,6 @@ function App() {
   return (
     <main className="app">
       <p className="eyebrow">Cloudnote</p>
-      <h1>{user ? 'You’re signed in' : 'Your notes, in the cloud'}</h1>
       <p className="description">
         {user
           ? 'Your account is ready.'
@@ -140,6 +181,24 @@ function App() {
       ) : user ? (
         <section className="status account-panel" aria-live="polite">
           <p className="account-email">{user.email}</p>
+          <button
+            className="submit-button"
+            type="button"
+            onClick={() => void verifyBackendAccount()}
+            disabled={checkingBackend}
+          >
+            {checkingBackend ? 'Checking backend…' : 'Test FastAPI account lookup'}
+          </button>
+          {backendAccount && (
+            <p className="success-message" role="status">
+              FastAPI verified: {backendAccount.email} (ID: {backendAccount.id})
+            </p>
+          )}
+          {backendError && (
+            <p className="error-message" role="alert">
+              {backendError}
+            </p>
+          )}
           <button
             className="submit-button"
             type="button"
