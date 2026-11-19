@@ -1,6 +1,9 @@
 name: Supabase keep-alive
 
 on:
+  push:
+    paths:
+      - .github/workflows/github-actions.yml
   schedule:
     - cron: '0 9 */3 * *'
   workflow_dispatch:
